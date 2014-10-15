@@ -6,15 +6,35 @@ from django.test import TestCase, TransactionTestCase
 from django.test.client import Client
 from mock import patch, call
 
-from ambition_slack.pagerduty.models import PagerdutyUser
+from ambition_slack.pagerduty.models import PagerdutyUser, PagerdutyEventReceipt
 from ambition_slack.slack.models import SlackUser
 
 
 class PagerdutyModelsTest(TransactionTestCase):
 
     """
-    Tests various aspects of the github models.
+    Tests various aspects of the pagerduty models and managers.
     """
+    def test_create_event_receipt_that_doesnt_already_exist(self):
+        """
+        Tests the create_event_receipt function on the pager duty event
+        receipt manager. This tests the case when the receipt doesnt exist
+        beforehand.
+        """
+        receipt = PagerdutyEventReceipt.objects.create_event_receipt('AA', 'incident.trigger')
+        self.assertEquals(receipt.incident_id, 'AA')
+        self.assertEquals(receipt.incident_type, 'incident.trigger')
+
+    def test_create_event_receipt_that_already_exists(self):
+        """
+        Tests the create_event_receipt function on the pager duty event
+        receipt manager. This tests the case when the receipt exists
+        beforehand, meaning it should return none
+        """
+        PagerdutyEventReceipt.objects.create_event_receipt('AA', 'incident.trigger')
+        receipt = PagerdutyEventReceipt.objects.create_event_receipt('AA', 'incident.trigger')
+        self.assertIsNone(receipt)
+
     def test_multiple_pagerduty_per_slack_user_not_allowed(self):
         # Try to create multiple pagerduty users for the same slack user
         slack_user = SlackUser.objects.create(
@@ -312,7 +332,7 @@ class TestPagerdutyView(TestCase):
         response = self.client.get('/pagerduty/')
         self.assertEqual(response.status_code, 200)
 
-    def test_pagerdutyview_git(self):
+    def test_pagerdutyview_get(self):
         response = self.client.get('/pagerduty/')
         self.assertEqual(response.content, 'Pagerduty')
 
@@ -322,14 +342,14 @@ class TestPagerdutyView(TestCase):
     def test_multi_payload_triggered_resolved_closed(self, slack):
         trigger_style = [{'fallback': 'pagerduty alert',
                           'color': '#c52929',
-                          'fields': [{'title': 'Client', 'value': 'axial_508dda33bc442dd8e1aaa6254086af7b',
+                          'fields': [{'title': 'Client', 'value': 'axial_508dda33bc',
                                       'short': True},
                                      {'title': 'Assigned To:', 'value': 'Wes Kendall, Josh Marlow, Wayne Fullam',
                                       'short': True}]}]
         t_style = json.dumps(trigger_style)
         resolve_style = [{'fallback': 'pagerduty alert',
                           'color': '228b22',
-                          'fields': [{'title': 'Client', 'value': 'axial_508dda33bc442dd8e1aaa6254086af7b',
+                          'fields': [{'title': 'Client', 'value': 'axial_508dda33bc',
                                       'short': True},
                                      {'title': 'Resolved by:', 'value': 'Wes Kendall', 'short': True}]}]
         r_style = json.dumps(resolve_style)
@@ -347,7 +367,9 @@ class TestPagerdutyView(TestCase):
             call_args_list[0],
             call(
                 '#support',
-                '<{}|Incident details> | <{}|Trigger details>'.format(
+                '{}({}) - <{}|Incident details> | <{}|Trigger details>'.format(
+                    'Ambition File Processor',
+                    'PPIYLHG',
                     'https://ambition.pagerduty.com/incidents/PLKJG51',
                     'https://ambition.pagerduty.com/incidents/PLKJG51/log_entries/P2S2I8R'),
                 attachments=t_style,
@@ -358,7 +380,9 @@ class TestPagerdutyView(TestCase):
             call_args_list[1],
             call(
                 '#support',
-                '*Resolved* - <{}|Incident details> | <{}|Trigger details>'.format(
+                '{}({}) - <{}|Incident details> | <{}|Trigger details>'.format(
+                    'Ambition File Processor',
+                    'PPIYLHG',
                     'https://ambition.pagerduty.com/incidents/PLKJG51',
                     'https://ambition.pagerduty.com/incidents/PLKJG51/log_entries/P2S2I8R'),
                 attachments=r_style,
@@ -371,7 +395,7 @@ class TestPagerdutyView(TestCase):
         icon = 'https://pbs.twimg.com/profile_images/482648331181490177/4X_QI2Vu_400x400.png'
         trigger_style = [{'fallback': 'pagerduty alert',
                           'color': '#c52929',
-                          'fields': [{'title': 'Client', 'value': 'axial_508dda33bc442dd8e1aaa6254086af7b',
+                          'fields': [{'title': 'Client', 'value': 'axial_508dda33bc',
                                       'short': True},
                                      {'title': 'Assigned To:', 'value': 'Wes Kendall, Josh Marlow, Wayne Fullam',
                                       'short': True}]}]
@@ -382,7 +406,9 @@ class TestPagerdutyView(TestCase):
             content_type='application/json')
         slack.chat.post_message.assert_called_with(
             '#support',
-            '<{}|Incident details> | <{}|Trigger details>'.format(
+            '{}({}) - <{}|Incident details> | <{}|Trigger details>'.format(
+                'Ambition File Processor',
+                'PPIYLHG',
                 'https://ambition.pagerduty.com/incidents/PLKJG51',
                 'https://ambition.pagerduty.com/incidents/PLKJG51/log_entries/P2S2I8R'),
             attachments=t_style,
@@ -393,7 +419,7 @@ class TestPagerdutyView(TestCase):
     def test_single_payload_resolved(self, slack):
         resolve_style = [{'fallback': 'pagerduty alert',
                           'color': '228b22',
-                          'fields': [{'title': 'Client', 'value': 'axial_508dda33bc442dd8e1aaa6254086af7b',
+                          'fields': [{'title': 'Client', 'value': 'axial_508dda33bc',
                                       'short': True},
                                      {'title': 'Resolved by:', 'value': 'Wes Kendall',
                                       'short': True}]}]
@@ -406,8 +432,10 @@ class TestPagerdutyView(TestCase):
         # Verify that slack posts a message
         slack.chat.post_message.assert_called_with(
             '#support',
-            '*Resolved* - <{}|Incident details> | <{}|Trigger details>'
+            '{}({}) - <{}|Incident details> | <{}|Trigger details>'
             .format(
+                'Ambition File Processor',
+                'PPIYLHG',
                 'https://ambition.pagerduty.com/incidents/PLKJG51',
                 'https://ambition.pagerduty.com/incidents/PLKJG51/log_entries/P2S2I8R'),
             attachments=r_style,

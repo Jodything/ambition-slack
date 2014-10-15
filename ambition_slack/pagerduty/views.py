@@ -4,9 +4,12 @@ import os
 
 from django.http import HttpResponse
 from django.views.generic.base import View
+
 import slack
 import slack.chat
 import slack.users
+
+from ambition_slack.pagerduty.models import PagerdutyEventReceipt
 
 
 slack.api_token = os.environ['SLACK_API_TOKEN']
@@ -34,13 +37,15 @@ class PagerdutyView(View):
                 client = message['data']['incident']['trigger_summary_data']['client']
                 trigger_style = [{'fallback': 'pagerduty alert',
                                   'color': '#c52929',
-                                  'fields': [{'title': 'Client', 'value': client, 'short': True},
+                                  'fields': [{'title': 'Client', 'value': client[:16], 'short': True},
                                              {'title': 'Assigned To:', 'value': multi_names, 'short': True}]}]
                 t_style = json.dumps(trigger_style)
                 slack.chat.post_message(
                     '#support',
-                    '<{}|Incident details> | <{}|Trigger details>'
+                    '{}({}) - <{}|Incident details> | <{}|Trigger details>'
                     .format(
+                        message['data']['incident']['service']['name'],
+                        message['data']['incident']['service']['id'],
                         message['data']['incident']['html_url'],
                         message['data']['incident']['trigger_details_html_url']),
                     attachments=t_style,
@@ -52,13 +57,15 @@ class PagerdutyView(View):
                 client = message['data']['incident']['trigger_summary_data']['client']
                 resolve_style = [{'fallback': 'pagerduty alert',
                                   'color': '228b22',
-                                  'fields': [{'title': 'Client', 'value': client, 'short': True},
+                                  'fields': [{'title': 'Client', 'value': client[:16], 'short': True},
                                              {'title': 'Resolved by:', 'value': names, 'short': True}]}]
                 r_style = json.dumps(resolve_style)
                 slack.chat.post_message(
                     '#support',
-                    '*Resolved* - <{}|Incident details> | <{}|Trigger details>'
+                    '{}({}) - <{}|Incident details> | <{}|Trigger details>'
                     .format(
+                        message['data']['incident']['service']['name'],
+                        message['data']['incident']['service']['id'],
                         message['data']['incident']['html_url'],
                         message['data']['incident']['trigger_details_html_url']),
                     attachments=r_style,
